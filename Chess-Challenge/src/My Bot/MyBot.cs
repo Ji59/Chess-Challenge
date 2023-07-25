@@ -5,18 +5,20 @@ using System.Security.Cryptography;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot {
+	private const double Tolerance = 0.01;
+
 	public Move Think(Board board, Timer timer) {
 		Move[] moves = board.GetLegalMoves();
-		List<Move> best = new List<Move>(moves.Length);
+		List<Move> best = new(moves.Length);
 		double bestEval = double.MinValue;
 		foreach (Move move in moves) {
 			double eval = EvalMove(board, move);
-			if (eval > bestEval) {
+			if (Math.Abs(eval - bestEval) < Tolerance) {
+				best.Add(move);
+			} else if (eval > bestEval) {
 				best.Clear();
 				best.Add(move);
 				bestEval = eval;
-			} else if (eval == bestEval) {
-				best.Add(move);
 			}
 		}
 
@@ -42,7 +44,9 @@ public class MyBot : IChessBot {
 			}
 
 			if (notSameColor == skipSuccessful) {
-				eval += pieceValue * pieceList.Count(piece => board.SquareIsAttackedByOpponent(piece.Square));
+				eval += pieceValue *
+				        (pieceList.Count(piece => board.SquareIsAttackedByOpponent(piece.Square)) * (notSameColor ? 1 : 0.05) -
+				         pieceList.Count);
 				if (skipSuccessful) {
 					board.UndoSkipTurn();
 				}
@@ -51,7 +55,7 @@ public class MyBot : IChessBot {
 
 		board.UndoMove(move);
 
-		return eval / 32;
+		return eval;
 	}
 
 	private static double EvalCapture(Board board, Move move) {
@@ -79,7 +83,7 @@ public class MyBot : IChessBot {
 				return 9;
 			}
 			default: {
-				return double.MaxValue;
+				return 16;
 			}
 		}
 	}
