@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Security.Cryptography;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot {
 	static Dictionary<ulong, Evaluation> Boards = new();
+	static Dictionary<int, int> MoveCount = new();
+	
 
 	public Move Think(Board board, Timer timer) {
 		// Console.WriteLine(zobristKey + "; " + board.GetFenString());
@@ -23,7 +26,8 @@ public class MyBot : IChessBot {
 			board.UndoMove(move);
 		}
 
-		for (int i = 0; i < 8192 * ((double)timer.MillisecondsRemaining / timer.GameStartTimeMilliseconds); i++) {
+		double stopAfter = 0.95 * timer.MillisecondsRemaining;
+		while (timer.MillisecondsRemaining > stopAfter) {
 			MoveEvaluation? move = null;
 			bool normalEval = true;
 			double selectedVal = double.MinValue;
@@ -38,6 +42,12 @@ public class MyBot : IChessBot {
 			startingEvaluation.Update(1 - result);
 		}
 
+		
+		foreach (KeyValuePair<int,int> movesCount in MoveCount.ToImmutableSortedDictionary()) {
+			Console.Write(movesCount.Key + " " + movesCount.Value + " \t");
+		}
+		Console.WriteLine();
+		MoveCount.Clear();
 
 		Move? best = null;
 		double bestValue = double.MinValue;
@@ -50,6 +60,10 @@ public class MyBot : IChessBot {
 				// Console.WriteLine(value + ": " + move.Visits);
 				best = move.move;
 				bestValue = value;
+			}
+
+			if (move.move.IsCapture) {
+				Console.WriteLine(move.move + "\t" + value);
 			}
 		}
 
@@ -66,7 +80,7 @@ public class MyBot : IChessBot {
 	) {
 		var (avg, actionVal) = ActionValue(moveEvaluation, boardVisits);
 
-		if (avg > 0.9375) {
+		if (avg > 0.75) {
 			if (normalEval || avg > selectedVal) {
 				selectedVal = avg;
 				move = moveEvaluation;
@@ -82,11 +96,12 @@ public class MyBot : IChessBot {
 	}
 
 	private double Select(Board board) {
+		int i = 1;
 		Stack<Move> doneMoves = new();
 		for (
 			ulong zobristKey = board.ZobristKey;
 			Boards.ContainsKey(zobristKey) && !(board.IsDraw() || board.IsInCheckmate());
-			zobristKey = board.ZobristKey
+			zobristKey = board.ZobristKey, i++
 		) {
 			// Console.WriteLine(zobristKey + "; " + board.GetFenString());
 			int boardVisits = Boards[zobristKey].Visits;
@@ -94,6 +109,10 @@ public class MyBot : IChessBot {
 			double selectedVal = double.MinValue;
 			bool normalEval = true;
 			foreach (Move moveCandidate in board.GetLegalMoves()) {
+				if (!(moveCandidate.PromotionPieceType == PieceType.Queen ||
+				      moveCandidate.PromotionPieceType == PieceType.None)) {
+					continue;
+				}
 				board.MakeMove(moveCandidate);
 				zobristKey = board.ZobristKey;
 				if (!Boards.ContainsKey(zobristKey)) {
@@ -123,6 +142,8 @@ public class MyBot : IChessBot {
 			}
 		}
 
+		MoveCount.TryAdd(i, 0);
+		MoveCount[i]++;
 
 		double result = 0.5;
 		if (board.IsInCheckmate()) {
@@ -175,14 +196,14 @@ public class MyBot : IChessBot {
 
 	private static (double, double) ActionValue(Evaluation evaluation, int boardVisits) {
 		double average = 1 - evaluation.Average();
-		return (average, average + Math.Sqrt(1 * Math.Log2(boardVisits) / evaluation.Visits));
+		return (average, average + Math.Sqrt(0.5 * Math.Log2(boardVisits) / evaluation.Visits));
 	}
 
 	private static double EvalMove(Board board) {
 		double eval = 0.5;
 
 		foreach (PieceList pieceList in board.GetAllPieceLists()) {
-			double pieceValue = PieceValue(pieceList.TypeOfPieceInList) / 64;
+			double pieceValue = PieceValue(pieceList.TypeOfPieceInList) / 24;
 			if (pieceList.IsWhitePieceList ^ board.IsWhiteToMove) {
 				pieceValue = -pieceValue;
 			}
@@ -193,7 +214,7 @@ public class MyBot : IChessBot {
 		}
 
 		// Console.WriteLine((board.IsWhiteToMove ? "W\t" : "B\t") + eval);
-		return eval;
+		return Math.Min(Math.Max(eval, 0.015625), 0.984375);
 	}
 
 	private static double PieceValue(PieceType piece) {
