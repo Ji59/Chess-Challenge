@@ -33,6 +33,9 @@
     <Compile Update="src\Evil Bot\EvilBot.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
+    <Compile Update="src\OtherBots\MyBotRL.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
